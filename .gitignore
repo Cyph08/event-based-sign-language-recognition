@@ -1,0 +1,23 @@
+# Code only. No data, no artefacts, no notes.
+data/
+outputs/
+Vault/
+refs/
+PDFs/
+*.aedat
+*.npz
+*.npy
+*.pt
+*.csv
+*.gif
+*.png
+*.pdf
+*.bib
+__pycache__/
+*.pyc
+.ipynb_checkpoints/
+.vscode/
+.idea/
+*.log
+CLAUDE.md
+DELETED_RECORD.md
