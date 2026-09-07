@@ -54,7 +54,12 @@ validation and evaluated once on test. Best-of-N single runs are not reported as
 | **SL-Animals** | **90.2% ± 0.9** (n=4) | 77.8% ± 4.1 (n=4) | 12.4 |
 | **DVSGesture** | **91.9% ± 0.2** (n=3) | 87.1% ± 2.6 (n=4) | 4.8 |
 
-A DVS-tuned variant (`dvsnet`, 495k params) reaches **92.8%** on DVSGesture (n=1).
+A DVS-tuned variant (`dvsnet`, 495k params) reaches **92.2% ± 0.8** on DVSGesture (n=2).
+
+Under the **four-fold subject-independent cross-validation** protocol that published
+SL-Animals work uses, the same recipe returns **87.6% ± 1.5** — so the comparison with
+published figures is like-for-like, not protocol-qualified. Cross-validation also showed
+the fixed split's nine test signers to be a mildly favourable draw, worth 2.6 points.
 
 ### Hand-region reduction is a trade-off curve, not a single point
 
@@ -96,20 +101,31 @@ coarse arm gestures (DVSGesture, 4.8 points) than for fine-grained sign language
 | SNN-HDC | 74.1% |
 | STBP | ~77% |
 | SLAYER (paper, *reduced* set) | 78.0 ± 3.1% |
-| **This work** | **90.2 ± 0.9%** (full set) |
+| **This work** (4-fold CV, full set) | **87.6 ± 1.5%** |
+| **This work** (fixed 41/9/9 split) | **90.2 ± 0.9%** |
 
-**DVS128 Gesture**
+**DVS128 Gesture** — ordered by accuracy, all at `T = 16`. Parameter counts are quoted
+only where the source reports them.
 
-| Method | Accuracy | Params |
-|---|---|---|
-| MSVIT | 98.8% | 1.67M |
-| Spikformer | 98.2% | ~2.6M |
-| SEW-ResNet | 97.9% | — |
-| **This work** | **92.8%** | **495k** |
+| Method | Family | Accuracy | Params |
+|---|---|---|---|
+| Spiking ResNet | convolutional SNN | 90.97% | not reported |
+| Plain stack, no shortcut | convolutional SNN | 91.67% | not reported |
+| **This work — `ghostsew12`** | convolutional SNN | **91.9% ± 0.2** | **238k** |
+| **This work — `dvsnet`** | convolutional SNN | **92.2% ± 0.8** | **495k** |
+| SEW-ResNet (IAND) | convolutional SNN | 95.49% | not reported |
+| SEW-ResNet (ADD) | convolutional SNN | 97.92% | not reported |
+| Spikformer | spiking transformer | 98.3% | ~2.6M |
 
-> Published SL-Animals results typically use 4-fold cross-validation; this work uses a
-> single fixed subject-independent split, so the comparison is not strictly like-for-like.
-> Test sets are small (171 and 264 samples), giving ±2.3% and ±1.7% binomial standard error.
+Convolutional SNN figures are from Table 4 of *Deep Residual Learning in Spiking Neural
+Networks* (Fang et al., NeurIPS 2021); the Spikformer figure is from its Appendix C.1.
+
+> **Reading these honestly.** Against directly-trained convolutional SNNs this architecture
+> holds up: it beats both baselines reported in the paper that introduced SEW blocks, at
+> 238k parameters. Against the strongest published figures it does not — it sits ~6 points
+> below Spikformer, and while 238k against ~2.6M is roughly an order of magnitude fewer
+> parameters, recent lightweight spiking transformers reach the high nineties under 1M, so
+> a small parameter count alone no longer establishes an efficiency win.
 
 ---
 
@@ -249,6 +265,30 @@ python explore_final.py --summary
 
 The summary prints mean ± std per configuration and the A/B significance test.
 
+The two headline experiments have their own queues, both idempotent — they skip any run
+whose result file already exists, so an interrupted queue resumes rather than restarts:
+
+```bash
+python explore_cv.py
+```
+
+```bash
+python explore_v12.py
+```
+
+`explore_cv.py` runs the published four-fold cross-validation protocol (4 folds x 2 seeds)
+and prints the result beside the published figures. `explore_v12.py` runs the
+temporal-resolution factorial: two architectures of very different capacity across
+`T = 8 / 16 / 32`, four seeds per cell. Both accept `--summary` to print results without
+retraining.
+
+Per-class accuracy and confusion structure are read from saved checkpoints, so this needs
+no retraining and runs on CPU:
+
+```bash
+python per_class.py
+```
+
 ### 6. Data-layer checks
 
 ```bash
@@ -286,11 +326,24 @@ routing/
   C1_sl_small.py        entry point — SL-Animals, small network
   C2_dvs_small.py       entry point — DVSGesture, small network
   explore*.py           experiment queues, one per investigation phase
+  explore_v12.py        temporal-resolution factorial: 2 architectures x 3 T x 4 seeds
+  explore_cv.py         4-fold subject-independent cross-validation (published protocol)
+  per_class.py          per-class accuracy + confusion, from saved checkpoints (CPU only)
   run_all.py            the original full grid
+
+Report/
+  make_figures.py       every figure + the full results appendix, from data/results/*.json
+  audit.py              re-derives every headline number and checks it against the report
+  build_pdf.py          markdown -> PDF with front matter, contents and page numbers
+  wordcount.py          body word count under the marking rubric's exclusions
 ```
 
 Each `explore*.py` documents one phase of the investigation and its reasoning in the
 module docstring; together they form the methodology trail.
+
+**Figures and results cannot drift from the text.** `make_figures.py` regenerates every
+figure and the appendix table directly from the stored run records, and `audit.py`
+recomputes each headline number and fails if it disagrees with what is written.
 
 ---
 

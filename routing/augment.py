@@ -70,6 +70,42 @@ def rand_erase(t, rng, max_frac=0.25):
 
 
 # ----------------------------------------------------------------------
+def rand_speed(t, rng, lo=0.8, hi=1.25):
+    """Resample the TIME axis — the same gesture performed faster or slower.
+
+    Targets the measured failure mode: every model here underfits training data yet
+    loses 2.3-4.9 points from validation to TEST, and test uses unseen subjects.
+    Signers differ in tempo, and nothing in the existing stack simulates that
+    (rand_temporal only SHIFTS the window, it does not change duration).
+    """
+    T = t.shape[0]
+    f = rng.uniform(lo, hi)
+    idx = np.clip(np.round(np.arange(T) * f), 0, T - 1).astype(int)
+    return t[idx]
+
+
+def rand_scale(t, rng, lo=0.85, hi=1.15):
+    """Zoom about the frame centre — different body size / camera distance.
+
+    The other axis of inter-subject variation the stack was missing. Implemented by
+    cropping (zoom in) or padding (zoom out) then resampling with nearest-neighbour
+    indexing, which keeps the event tensor sparse and avoids interpolation blur.
+    """
+    T, C, H, W = t.shape
+    s = rng.uniform(lo, hi)
+    nh, nw = max(8, int(H / s)), max(8, int(W / s))
+    y0, x0 = (H - nh) // 2, (W - nw) // 2
+    if s >= 1.0:                                   # zoom IN: crop then stretch back
+        crop = t[:, :, y0:y0 + nh, x0:x0 + nw]
+    else:                                          # zoom OUT: pad then shrink back
+        crop = np.zeros((T, C, nh, nw), t.dtype)
+        py, px = (nh - H) // 2, (nw - W) // 2
+        crop[:, :, py:py + H, px:px + W] = t
+    yi = np.clip((np.arange(H) * crop.shape[2] / H).astype(int), 0, crop.shape[2] - 1)
+    xi = np.clip((np.arange(W) * crop.shape[3] / W).astype(int), 0, crop.shape[3] - 1)
+    return crop[:, :, yi][:, :, :, xi]
+
+
 # ----------------------------------------------------------------------
 # DATASET-SPECIFIC PRESETS — this matters, and getting it wrong corrupts labels
 # ----------------------------------------------------------------------
@@ -86,21 +122,36 @@ def rand_erase(t, rng, max_frac=0.25):
 AUG_PRESETS = {
     "sl":  dict(p_flip=0.5, p_shift=0.7, p_rot=0.3, p_time=0.5, p_erase=0.25),
     "dvs": dict(p_flip=0.0, p_shift=0.7, p_rot=0.0, p_time=0.5, p_erase=0.25),
+    # "subject" variants: add tempo + body-size jitter, and REDUCE erase so the
+    # stack does not simply get heavier. Train accuracy already sits BELOW val
+    # accuracy in every model, so total augmentation strength is at saturation —
+    # the aim is to retarget it at inter-subject variation, not add more of it.
+    "sl_subj":  dict(p_flip=0.5, p_shift=0.7, p_rot=0.3, p_time=0.5, p_erase=0.15,
+                     p_speed=0.5, p_scale=0.5),
+    "dvs_subj": dict(p_flip=0.0, p_shift=0.7, p_rot=0.0, p_time=0.5, p_erase=0.15,
+                     p_speed=0.5, p_scale=0.5),
+    # lighter control: is the current stack over-regularising?
+    "sl_light":  dict(p_flip=0.5, p_shift=0.7, p_rot=0.3, p_time=0.5, p_erase=0.15),
+    "dvs_light": dict(p_flip=0.0, p_shift=0.7, p_rot=0.0, p_time=0.5, p_erase=0.15),
 }
 
 
 def augment(t, rng=None, p_flip=0.5, p_shift=0.7, p_rot=0.3, p_time=0.5,
-            p_erase=0.25, preset=None):
+            p_erase=0.25, p_speed=0.0, p_scale=0.0, preset=None):
     """Apply the augmentation stack to one sample.
-    `preset`: 'sl' | 'dvs' — use the dataset-appropriate probabilities."""
+    `preset`: key of AUG_PRESETS — 'sl'/'dvs', '*_subj' (adds tempo + size
+    jitter), or '*_light' (reduced erase, the over-regularisation control)."""
     if preset is not None:
         cfg = AUG_PRESETS[preset]
         p_flip, p_shift = cfg["p_flip"], cfg["p_shift"]
         p_rot, p_time, p_erase = cfg["p_rot"], cfg["p_time"], cfg["p_erase"]
+        p_speed, p_scale = cfg.get("p_speed", 0.0), cfg.get("p_scale", 0.0)
     rng = rng or np.random.default_rng()
     if p_flip and rng.random() < p_flip:  t = rand_flip(t, rng)
+    if p_scale and rng.random() < p_scale: t = rand_scale(t, rng)
     if p_shift and rng.random() < p_shift: t = rand_shift(t, rng)
     if p_rot and rng.random() < p_rot:   t = rand_rotate(t, rng)
+    if p_speed and rng.random() < p_speed: t = rand_speed(t, rng)
     if p_time and rng.random() < p_time:  t = rand_temporal(t, rng)
     if p_erase and rng.random() < p_erase: t = rand_erase(t, rng)
     return np.ascontiguousarray(t)

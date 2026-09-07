@@ -36,9 +36,11 @@ class _Tee:
 
 # (code, ds, mode, net, T, seed, extra)  — ordered so each goal advances early
 QUEUE = [
-    # T1: does a dense crop beat a sparse mask?  (cheap: 64x64)
-    ("CR", "sl",  "crop64", "ghostsew12", 16, 0, dict(keep_frac=0.7)),
-    ("CR", "sl",  "crop64", "ghostsew12", 16, 1, dict(keep_frac=0.7)),
+    # T1: crop64 TESTED AND REJECTED — 66.7% vs 82.7% for the sparse mask (-16).
+    # Cropping to a moving window destroys ABSOLUTE HAND POSITION, and location is a
+    # phonological parameter of sign language (a sign near the face differs from the
+    # same handshape at the chest). The 94%-empty 128x128 canvas is not waste: it
+    # carries where-the-hand-is. All crop64 runs dropped.
     # C: the two rebuilt small models, SL first (cheap)
     ("C",  "sl",  "full",   "tiny",       16, 0, {}),
     ("C",  "sl",  "full",   "smallsew",   16, 0, {}),
@@ -47,15 +49,14 @@ QUEUE = [
     # C: same two on DVS
     ("C",  "dvs", "full",   "tiny",       16, 0, {}),
     ("C",  "dvs", "full",   "smallsew",   16, 0, {}),
-    # C EXTREME: smallest model on smallest input — the efficiency headline
-    ("C",  "sl",  "crop64", "tiny",       16, 0, dict(keep_frac=0.7)),
-    ("C",  "dvs", "crop64", "tiny",       16, 0, dict(keep_frac=0.7)),
+    # C EXTREME: smallest model on the HAND input (not crop64 — see above)
+    ("C",  "sl",  "hand",   "tiny",       16, 0, dict(keep_frac=0.7)),
+    ("C",  "dvs", "hand",   "tiny",       16, 0, dict(keep_frac=0.5)),
     # T2: confirm + push
     ("DV", "dvs", "full",   "dvsnet",     24, 1, {}),
     ("DV", "dvs", "full",   "dvsnet",     16, 1, {}),
-    # T1: crop64 on DVS + a third SL seed
-    ("CR", "dvs", "crop64", "dvsnet",     16, 0, dict(keep_frac=0.7)),
-    ("CR", "sl",  "crop64", "ghostsew12", 16, 2, dict(keep_frac=0.7)),
+    # T1: keep_frac is now the only working lever — take the curve to 0.85
+    ("KF", "sl",  "hand",   "ghostsew12", 16, 1, dict(keep_frac=0.85)),
     # C: seeds for error bars on the small models
     ("C",  "sl",  "full",   "tiny",       16, 1, {}),
     ("C",  "dvs", "full",   "tiny",       16, 1, {}),
